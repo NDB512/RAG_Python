@@ -20,7 +20,7 @@ def ingest_document(file_path: str, store_path: str, doc_type: str = "user"):
     vector_store = FAISS.from_documents(legal_chunks, embeddings)
     vector_store.save_local(store_path)
 
-    print(f"✅ Ingested {len(legal_chunks)} chunks -> {store_path}")
+    print(f" Ingested {len(legal_chunks)} chunks -> {store_path}")
     return store_path
 
 def ingest_folder(folder_path: str, store_path: str, doc_type: str = "legal"):
@@ -41,5 +41,5 @@ def ingest_folder(folder_path: str, store_path: str, doc_type: str = "legal"):
     vector_store = FAISS.from_documents(all_docs, embeddings)
     vector_store.save_local(store_path)
 
-    print(f"✅ Ingested {len(all_docs)} chunks from folder -> {store_path}")
+    print(f" Ingested {len(all_docs)} chunks from folder -> {store_path}")
     return store_path
