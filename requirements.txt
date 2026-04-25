@@ -1,10 +1,27 @@
-streamlit
-langchain
-langchain-community
-langchain-text-splitters
-faiss-cpu
-sentence-transformers
-transformers
-torch
-pypdf
-accelerate
+streamlit==1.56.0
+
+# LangChain stack
+langchain==1.2.15
+langchain-core==1.2.30
+langchain-community==0.4.1
+langchain-text-splitters==1.1.1
+langchain-openai==1.1.13
+
+# Embedding / Vector DB
+faiss-cpu==1.13.2
+sentence-transformers==5.4.1
+
+# ML / Transformers
+transformers==5.5.4
+torch==2.11.0
+accelerate==1.13.0
+
+# Data processing
+numpy==2.4.4
+scikit-learn==1.8.0
+
+# PDF
+pypdf==6.10.2
+
+# Env config
+python-dotenv==1.2.2
