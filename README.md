@@ -17,6 +17,69 @@ Dự án xây dựng một pipeline RAG chuyên biệt cho tài liệu pháp lý
 
 ---
 
+## Cài đặt
+
+### 1. Clone repository
+
+```bash
+git clone https://github.com/NDB512/RAG_Python.git
+cd RAG_Python
+```
+
+---
+
+### 2. Tạo môi trường ảo
+
+#### Windows
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+#### Linux / macOS
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+---
+
+### 3. Cài đặt thư viện
+
+Dự án đã có sẵn file `requirements.txt`, chỉ cần chạy:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+### 4. Cấu hình môi trường
+
+Tạo file `.env` trong thư mục gốc:
+
+```env
+GROQ_API_KEY=your_api_key
+```
+
+---
+
+## Chạy ứng dụng
+
+```bash
+streamlit run app.py
+```
+
+Mở trình duyệt tại:
+
+```
+http://localhost:8501
+```
+
+---
+
 ## Điểm nổi bật
 
 ### 1. Tách văn bản có cấu trúc
@@ -130,16 +193,3 @@ Trường hợp đặc biệt:
 ## Yêu cầu
 
 * Python >= 3.10
-* Tạo file `.env`:
-
-```env
-GROQ_API_KEY=your_api_key
-```
-
----
-
-## Chạy ứng dụng
-
-```bash
-streamlit run app.py
-```
