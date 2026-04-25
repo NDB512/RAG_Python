@@ -2,3 +2,7 @@ venv/
 __pycache__/
 *.pyc
 .env
+
+# data
+data/uploads/
+data/vector_store/
