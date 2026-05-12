@@ -27,9 +27,7 @@ def classify_intent(query: str) -> QueryIntent:
     """Phân loại ý định câu hỏi để chọn prompt phù hợp."""
     q = query.lower()
 
-    if detect_article_query(query):
-        return QueryIntent.ARTICLE_LOOKUP
-
+    # COMPARISON phải check TRƯỚC article_lookup để tránh "vi phạm" trong query điều khoản bị nhận diện nhầm thành so sánh
     compare_kws = [
         "hợp pháp không", "trái luật", "đúng luật", "vi phạm",
         "đối chiếu", "so sánh", "có phù hợp", "có đúng quy định",
@@ -37,6 +35,15 @@ def classify_intent(query: str) -> QueryIntent:
     ]
     if any(k in q for k in compare_kws):
         return QueryIntent.COMPARISON
+
+    # PENALTY cũng check trước để tránh "vi phạm" trong query điều khoản
+    penalty_kws = ["phạt", "bồi thường", "chế tài", "xử lý vi phạm"]
+    if any(k in q for k in penalty_kws):
+        return QueryIntent.PENALTY
+
+    # Chỉ ARTICLE_LOOKUP khi query hỏi thuần túy về nội dung điều đó
+    if detect_article_query(query):
+        return QueryIntent.ARTICLE_LOOKUP
 
     summary_kws = ["tóm tắt", "nội dung chính", "tổng quan", "giải thích", "nói về gì"]
     if any(k in q for k in summary_kws):
@@ -53,10 +60,6 @@ def classify_intent(query: str) -> QueryIntent:
     date_kws = ["thời hạn", "bao lâu", "ngày nào", "khi nào", "hết hạn", "hiệu lực"]
     if any(k in q for k in date_kws):
         return QueryIntent.DATE_TERM
-
-    penalty_kws = ["phạt", "bồi thường", "vi phạm", "chế tài", "xử lý"]
-    if any(k in q for k in penalty_kws):
-        return QueryIntent.PENALTY
 
     return QueryIntent.GENERAL
 

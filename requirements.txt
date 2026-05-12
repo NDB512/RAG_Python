@@ -25,3 +25,5 @@ pypdf==6.10.2
 
 # Env config
 python-dotenv==1.2.2
+
+groq==0.1.0

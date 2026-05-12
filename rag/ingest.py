@@ -1,5 +1,7 @@
 import os
-from langchain_community.document_loaders import PyPDFLoader
+import re
+import pdfplumber
+from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from rag.chunking import build_documents_from_pages
@@ -11,13 +13,48 @@ def get_embeddings():
     return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 
 
+def _fix_paragraph_breaks(text: str) -> str:
+    """
+    Thêm xuống dòng trước các khoản con và điều khoản bị dính liền.
+    PDF thường không có newline giữa "...câu trước. 1. Khoản tiếp theo"
+    """
+    # Thêm newline trước "1. " "2. " ... khi bị dính vào câu trước
+    text = re.sub(r"(?<=[^\n])(\s)(\d{1,2})\.\s+(?=[A-ZĐÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴ])", r"\n\2. ", text)
+
+    # Thêm newline trước "a) " "b) " ... khi bị dính
+    text = re.sub(r"(?<=[^\n])(\s)([a-zđ])\)\s+", r"\n\2) ", text)
+
+    # Thêm newline trước "Điều X." khi bị dính vào câu trước
+    # (chỉ khi là đầu điều khoản thực sự, không phải tham chiếu)
+    text = re.sub(
+        r"(?<=[^\n])\s+(Điều\s+\d+[A-Za-z]?\.)\s+",
+        r"\n\1 ",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    return text
+
+
+def _load_pdf_with_plumber(file_path: str) -> list[Document]:
+    docs = []
+    with pdfplumber.open(file_path) as pdf:
+        for i, page in enumerate(pdf.pages):
+            text = page.extract_text(x_tolerance=2, y_tolerance=3) or ""
+            if text.strip():
+                text = _fix_paragraph_breaks(text)  # <-- thêm dòng này
+                docs.append(Document(
+                    page_content=text,
+                    metadata={
+                        "source": file_path,
+                        "page": i,
+                        "page_label": str(i + 1),
+                    }
+                ))
+    return docs
+
 def ingest_document(file_path: str, store_path: str, doc_type: str = "user"):
-    """
-    Ingest một file PDF vào vector store.
-    Nếu store đã tồn tại -> MERGE (không ghi đè) để hỗ trợ nhiều file.
-    """
-    loader = PyPDFLoader(file_path)
-    docs   = loader.load()
+    docs = _load_pdf_with_plumber(file_path)
 
     if not docs:
         raise ValueError(f"Không đọc được nội dung từ file: {file_path}")
@@ -62,7 +99,7 @@ def ingest_folder(folder_path: str, store_path: str, doc_type: str = "legal"):
     Ghi đè store cũ (dùng cho legal_docs load batch).
     """
     embeddings = get_embeddings()
-    all_docs   = []
+    all_docs = []
 
     pdf_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".pdf")]
     if not pdf_files:
@@ -71,8 +108,7 @@ def ingest_folder(folder_path: str, store_path: str, doc_type: str = "legal"):
     for filename in pdf_files:
         file_path = os.path.join(folder_path, filename)
         try:
-            loader = PyPDFLoader(file_path)
-            docs   = loader.load()
+            docs = _load_pdf_with_plumber(file_path)
             chunks = build_documents_from_pages(docs, doc_type=doc_type)
             all_docs.extend(chunks)
             print(f"[ingest_folder] {filename}: {len(chunks)} chunks")

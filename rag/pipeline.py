@@ -130,7 +130,7 @@ def _find_article_docs(article_num: str, docs: list) -> list:
 
     return result
 
-#  PROMPT TEMPLATES 
+# PROMPT TEMPLATES 
 
 _PROMPTS = {
     QueryIntent.COMPARISON: """\
@@ -253,7 +253,7 @@ def answer_question(query: str) -> tuple[str, list, list]:
     intent = classify_intent(query)
     print(f"[pipeline] intent={intent}, query={query!r}")
 
-    # ── ARTICLE_LOOKUP: scan toàn bộ store, không dùng similarity ───────────
+    # ARTICLE_LOOKUP: scan toàn bộ store, không dùng similarity search, để tránh nhầm lẫn với các điều khoản khác có số gần giống
     if intent == QueryIntent.ARTICLE_LOOKUP:
         article_num = detect_article_query(query)
         print(f"[pipeline] article_num={article_num!r}")

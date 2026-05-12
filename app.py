@@ -35,7 +35,6 @@ if os.path.exists(UPLOAD_DIR):
         except Exception:
             pass
 
-
 #  Helpers 
 def _render_source_card(doc):
     meta    = doc.metadata
@@ -57,7 +56,11 @@ def _render_source_card(doc):
         if sub:
             st.caption(" · ".join(sub))
         content = doc.page_content.strip()
-        st.write(content[:600] + "…" if len(content) > 600 else content)
+        display = content[:600] + "…" if len(content) > 600 else content
+
+        # Đổi \n thành 2 space + \n để markdown xuống dòng đúng
+        display = display.replace("\n", "  \n")
+        st.markdown(display)
 
 
 def _filter_relevant_docs(docs: list, query: str) -> list:

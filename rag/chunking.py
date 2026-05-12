@@ -3,11 +3,19 @@ import os
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# PATTERNS 
+# ARTICLE_PATTERN chỉ match khi "Điều X" đứng đầu dòng VÀ
+# KHÔNG theo sau bởi từ nối (của, trong, theo, này, và, hoặc...)
 ARTICLE_PATTERN = re.compile(
     r"(?m)^(Điều\s+\d+[A-Za-z]?[\.\s][^\n]*)",
     re.IGNORECASE | re.MULTILINE
 )
+
+# Pattern để nhận diện "Điều X" giả (trong giữa câu)
+_INLINE_DIEU_PATTERN = re.compile(
+    r"\bĐiều\s+\d+[A-Za-z]?\s+(?:của|trong|theo|này|và|hoặc|với|nêu|nói|quy định)",
+    re.IGNORECASE
+)
+
 CHAPTER_PATTERN = re.compile(
     r"(?m)^(CHƯƠNG\s+[IVX\d]+|PHẦN\s+[IVX\d]+|MỤC\s+[IVX\d]+)", re.IGNORECASE
 )
@@ -26,6 +34,28 @@ HEADER_KEYWORDS = [
 def _clean_text(text: str) -> str:
     text = text.replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
+
+    # Trường hợp: dòng trước chưa kết thúc (không có dấu . : ; ?)
+    # và dòng tiếp theo bắt đầu bằng "Điều X của/trong/theo/này..."
+    # Thì đây là tham chiếu nội tuyến, không phải đầu điều khoản mới
+    text = re.sub(
+        r"([^\.\:\;\?\!\n])\n(Điều\s+\d+[A-Za-z]?\s+(?:của|trong|theo|này|và|hoặc|với|nêu|được\s+quy\s+định))",
+        r"\1 \2",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Nối dòng bị wrap giữa chừng: dòng trên chưa kết thúc câu, dòng dưới bắt đầu bằng chữ thường hoặc chữ số tiếp nối
+    # (tránh nối khi dòng dưới là đầu điều khoản thực sự)
+    text = re.sub(
+        r"([a-zđàáâãèéêìíòóôõùúýăắặẳẵẻẽếềệổỗộờớợủữựẫẩảạ,])\n"
+        r"(?!Điều\s+\d|CHƯƠNG|PHẦN|MỤC|[IVX]{1,5}\.\s)"
+        r"([a-zđàáâãèéêìíòóôõùúýăắặẳẵẻẽếềệổỗộờớợủữựẫẩảạ])",
+        r"\1 \2",
+        text,
+        flags=re.IGNORECASE,
+    )
+
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -70,6 +100,37 @@ def _extract_title(chunk: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _is_real_article_match(match, text: str) -> bool:
+    """
+    Kiểm tra xem match có phải đầu điều khoản thực sự không,
+    hay chỉ là tham chiếu nội tuyến bị xuống dòng.
+    """
+    start = match.start()
+
+    # Phải đứng đầu dòng (ký tự trước là \n hoặc start of string)
+    if start > 0 and text[start - 1] != "\n":
+        return False
+
+    matched_text = match.group(0)
+
+    # Nếu sau "Điều X" là từ nối → tham chiếu nội tuyến, không phải điều khoản
+    after_num = re.match(
+        r"Điều\s+\d+[A-Za-z]?\s*([\.\s])\s*(.{0,40})",
+        matched_text,
+        re.IGNORECASE,
+    )
+    if after_num:
+        separator = after_num.group(1).strip()
+        rest = after_num.group(2).strip().lower()
+        # Nếu không có dấu chấm sau số điều và bắt đầu bằng từ nối → giả
+        if not separator and re.match(
+            r"^(của|trong|theo|này|và|hoặc|với|nêu|được)", rest
+        ):
+            return False
+
+    return True
+
+
 def _split_long_article(chunk: str, article: str | None, title: str | None) -> list[dict]:
     """Chia điều khoản dài thành các clause nhỏ hơn."""
     sub_pattern = re.compile(
@@ -105,12 +166,15 @@ def split_legal_text(text: str) -> list[dict]:
     if not text:
         return []
 
+    # Lọc chỉ giữ các match thực sự là đầu điều khoản
+    all_article_matches = list(ARTICLE_PATTERN.finditer(text))
     article_matches = [
-        m for m in ARTICLE_PATTERN.finditer(text)
-        if m.start() == 0 or text[m.start() - 1] == "\n" 
+        m for m in all_article_matches
+        if _is_real_article_match(m, text)
     ]
+
     chapter_matches = list(CHAPTER_PATTERN.finditer(text))
-    roman_matches   = list(ROMAN_PATTERN.finditer(text))
+    roman_matches = list(ROMAN_PATTERN.finditer(text))
 
     if article_matches:
         primary_matches = article_matches
@@ -159,7 +223,8 @@ def split_legal_text(text: str) -> list[dict]:
 
             article, title = _extract_title(chunk)
 
-            if len(chunk) > 1800:
+            # Tăng ngưỡng lên 2500 cho văn bản tiếng Việt dày
+            if len(chunk) > 2500:
                 sub_chunks = _split_long_article(chunk, article, title)
                 chunks.extend(sub_chunks)
             else:
@@ -187,7 +252,7 @@ def split_legal_text(text: str) -> list[dict]:
 
         raw_chunks = splitter.split_text(text)
         current_article = None
-        current_title   = None
+        current_title = None
 
         for raw in raw_chunks:
             raw = raw.strip()
@@ -195,7 +260,7 @@ def split_legal_text(text: str) -> list[dict]:
                 continue
 
             art_match = ARTICLE_PATTERN.search(raw)
-            if art_match:
+            if art_match and _is_real_article_match(art_match, raw + "\n"):
                 current_article, current_title = _extract_title(art_match.group(1) + "\n")
 
             chunks.append({
@@ -213,23 +278,49 @@ def build_documents_from_pages(docs, doc_type: str = "user") -> list[Document]:
     if not docs:
         return []
 
-    full_text = "\n\n".join(
-        doc.page_content for doc in docs if doc.page_content.strip()
-    )
+    # Join text nhưng đánh dấu ranh giới trang để track metadata
+    page_boundaries = []  # (char_start, page_label)
+    parts = []
+    pos = 0
+    for doc in docs:
+        content = doc.page_content.strip()
+        if not content:
+            continue
+        page_boundaries.append((pos, doc.metadata.get("page_label", "?")))
+        parts.append(content)
+        pos += len(content) + 2  # +2 cho "\n\n"
+
+    full_text = "\n\n".join(parts)
     base_meta = docs[0].metadata.copy()
     base_meta["file_name"] = os.path.basename(base_meta.get("source", "unknown.pdf"))
 
     chunks = split_legal_text(full_text)
 
+    def _get_page_label(chunk_text: str) -> str:
+        """Tìm trang chứa đoạn text này dựa trên vị trí trong full_text."""
+        pos = full_text.find(chunk_text[:80])
+        if pos == -1:
+            return "?"
+        # Tìm trang gần nhất trước vị trí này
+        label = "1"
+        for boundary_pos, page_label in page_boundaries:
+            if boundary_pos <= pos:
+                label = page_label
+            else:
+                break
+        return label
+
     final_docs = []
     for i, chunk in enumerate(chunks):
+        page_label = _get_page_label(chunk["text"])
         meta = {
             **base_meta,
-            "doc_type":    doc_type,
+            "doc_type": doc_type,
             "chunk_index": i,
-            "chunk_type":  chunk["chunk_type"],
-            "article":     chunk["article"],   # đã chuẩn hóa: "điều 3" hoặc None
-            "title":       chunk["title"],
+            "chunk_type": chunk["chunk_type"],
+            "article": chunk["article"],
+            "title": chunk["title"],
+            "page_label": page_label,  # ghi đè page_label đúng
         }
         final_docs.append(Document(page_content=chunk["text"], metadata=meta))
 
