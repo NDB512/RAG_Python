@@ -12,7 +12,7 @@ LEGAL_STORE = "data/vector_store/legal_docs"
 
 GROQ_MODEL = "llama-3.1-8b-instant"
 
-
+# LRU cache để tái sử dụng client, tránh tạo mới mỗi lần hỏi
 @functools.lru_cache(maxsize=1)
 def load_llm() -> Groq:
     api_key = os.getenv("GROQ_API_KEY")
@@ -20,7 +20,7 @@ def load_llm() -> Groq:
         raise ValueError("Chưa set GROQ_API_KEY trong file .env")
     return Groq(api_key=api_key)
 
-
+# Pipeline chính
 def _call_llm(prompt: str) -> str:
     client = load_llm()
     response = client.chat.completions.create(
@@ -41,7 +41,7 @@ def _call_llm(prompt: str) -> str:
     )
     return response.choices[0].message.content.strip()
 
-
+# Các hàm phụ trợ cho pipeline
 def _format_context(docs, max_chars: int = 6000) -> str:
     """Tăng max_chars và deduplicate trước khi format."""
     # Deduplicate theo page_content
@@ -77,7 +77,7 @@ def _format_context(docs, max_chars: int = 6000) -> str:
 
     return "\n\n---\n\n".join(parts) if parts else "Không có dữ liệu."
 
-
+# Hàm tìm kiếm điều khoản theo số điều, với logic gộp chunk nếu điều khoản bị cắt nhỏ
 def _find_article_docs(article_num: str, docs: list) -> list:
     """
     Tìm chunk theo số điều. Nếu điều quá ngắn, gộp thêm chunk liền kề.
@@ -131,7 +131,7 @@ def _find_article_docs(article_num: str, docs: list) -> list:
     return result
 
 # PROMPT TEMPLATES 
-
+# Các prompt được thiết kế theo từng intent, có thể mở rộng thêm nếu cần
 _PROMPTS = {
     QueryIntent.COMPARISON: """\
 Đối chiếu điều khoản hợp đồng với quy định pháp luật bên dưới.
@@ -171,8 +171,15 @@ Nếu không có, nói "Không tìm thấy thông tin này trong hợp đồng."
 """,
 
     QueryIntent.OBLIGATION: """\
-Liệt kê đầy đủ nghĩa vụ và quyền lợi liên quan đến câu hỏi.
-Phân biệt rõ: nghĩa vụ của Bên A / Bên B nếu có.
+Liệt kê đầy đủ nghĩa vụ và quyền lợi của các bên theo hợp đồng.
+Hợp đồng loại: {contract_type}
+
+Phân biệt rõ ràng:
+**Nghĩa vụ của Bên cho thuê / Bên A:**
+**Nghĩa vụ của Bên thuê / Bên B:**
+**Cam kết chung:**
+
+Chỉ dựa vào nội dung được cung cấp.
 
 [HỢP ĐỒNG]
 {context_user}
@@ -233,6 +240,8 @@ Nếu không tìm thấy, nói: "Không tìm thấy trong tài liệu."
 """,
 }
 
+# Các hàm phụ trợ khác
+# Hàm load toàn bộ docs từ FAISS store, dùng cho trường hợp ARTICLE_LOOKUP để scan thay vì similarity search
 def _get_all_docs_from_store(store_path: str) -> list:
     """Load toàn bộ documents từ FAISS store (không dùng similarity search)."""
     from rag.retriever import load_store
@@ -315,18 +324,27 @@ def answer_question(query: str) -> tuple[str, list, list]:
     context_user  = _format_context(all_user_docs)
     context_legal = _format_context(all_legal_docs)
 
+    contract_type = "hop_dong_khac"
+    if all_user_docs:
+        contract_type = all_user_docs[0].metadata.get("contract_type", "hop_dong_khac")
+
     template = _PROMPTS.get(intent, _PROMPTS[QueryIntent.GENERAL])
     try:
-        prompt = template.format(
-            context_user=context_user,
-            context_legal=context_legal,
-            query=query,
-        )
-    except KeyError:
-        prompt = template.format(
-            context_user=context_user,
-            query=query,
-        )
+        if "{contract_type}" in template:
+            prompt = template.format(
+                context_user=context_user,
+                context_legal=context_legal,
+                query=query,
+                contract_type=contract_type
+            )
+        else:
+            prompt = template.format(
+                context_user=context_user,
+                context_legal=context_legal,
+                query=query,
+            )
+    except:
+        prompt = template.format(context_user=context_user, query=query)
 
     print(f"[pipeline] prompt_len={len(prompt)}")
     try:

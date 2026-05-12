@@ -8,10 +8,8 @@ from rag.chunking import build_documents_from_pages
 
 EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
-
 def get_embeddings():
     return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-
 
 def _fix_paragraph_breaks(text: str) -> str:
     """
@@ -35,22 +33,37 @@ def _fix_paragraph_breaks(text: str) -> str:
 
     return text
 
-
 def _load_pdf_with_plumber(file_path: str) -> list[Document]:
     docs = []
+    previous_end = ""   # Lưu dòng cuối trang trước để nối
+
     with pdfplumber.open(file_path) as pdf:
         for i, page in enumerate(pdf.pages):
             text = page.extract_text(x_tolerance=2, y_tolerance=3) or ""
-            if text.strip():
-                text = _fix_paragraph_breaks(text)  # <-- thêm dòng này
-                docs.append(Document(
-                    page_content=text,
-                    metadata={
-                        "source": file_path,
-                        "page": i,
-                        "page_label": str(i + 1),
-                    }
-                ))
+            if not text.strip():
+                continue
+
+            text = previous_end + "\n" + text if previous_end else text
+            text = _fix_paragraph_breaks(text)
+            
+            docs.append(Document(
+                page_content=text,
+                metadata={
+                    "source": file_path,
+                    "page": i,
+                    "page_label": str(i + 1),
+                }
+            ))
+
+            # Lưu lại đoạn cuối trang để nối với trang sau (nếu đang giữa điều khoản)
+            lines = text.strip().split("\n")
+            previous_end = ""
+            if lines:
+                last_line = lines[-1].strip()
+                # Nếu dòng cuối không kết thúc bằng dấu chấm hoặc dấu hai chấm → có khả năng bị cắt
+                if not re.search(r'[。.!?；:]$', last_line) and len(last_line) > 30:
+                    previous_end = last_line + "\n"
+
     return docs
 
 def ingest_document(file_path: str, store_path: str, doc_type: str = "user"):
@@ -85,13 +98,11 @@ def ingest_document(file_path: str, store_path: str, doc_type: str = "user"):
 
     return store_path
 
-
 def _save_new(chunks, embeddings, store_path):
     os.makedirs(store_path, exist_ok=True)
     vector_store = FAISS.from_documents(chunks, embeddings)
     vector_store.save_local(store_path)
     print(f"[ingest] Created store with {len(chunks)} chunks -> {store_path}")
-
 
 def ingest_folder(folder_path: str, store_path: str, doc_type: str = "legal"):
     """

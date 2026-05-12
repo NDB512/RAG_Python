@@ -26,7 +26,7 @@ LEGAL_DOCS_DIR = "legal_docs"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs("data/vector_store", exist_ok=True)
 
-#  Dọn file upload cũ khi app khởi động ─
+# Dọn file upload cũ khi app khởi động
 # Tránh tích lũy file qua nhiều session
 if os.path.exists(UPLOAD_DIR):
     for old_file in os.listdir(UPLOAD_DIR):
@@ -35,7 +35,7 @@ if os.path.exists(UPLOAD_DIR):
         except Exception:
             pass
 
-#  Helpers 
+# Helpers 
 def _render_source_card(doc):
     meta    = doc.metadata
     article = meta.get("article") or ""
@@ -62,7 +62,7 @@ def _render_source_card(doc):
         display = display.replace("\n", "  \n")
         st.markdown(display)
 
-
+# Các hàm tiện ích
 def _filter_relevant_docs(docs: list, query: str) -> list:
     q = query.lower()
 
@@ -94,7 +94,7 @@ def _filter_relevant_docs(docs: list, query: str) -> list:
     return sorted(filtered, key=sort_key)
 
 
-#  Session state init
+#  Khởi tạo session state
 if "ingested_files" not in st.session_state:
     st.session_state.ingested_files = set()
 if "answer"     not in st.session_state: st.session_state.answer     = None
@@ -106,13 +106,13 @@ if "last_query" not in st.session_state: st.session_state.last_query = ""
 #  Sidebar 
 st.sidebar.header("⚙️ Quản lý dữ liệu")
 
-if st.sidebar.button("📚 Ingest kho luật / quy định"):
-    if not os.path.exists(LEGAL_DOCS_DIR):
-        st.sidebar.error("❌ Chưa có folder legal_docs/")
-    else:
-        with st.spinner("Đang ingest kho luật..."):
-            ingest_folder(LEGAL_DOCS_DIR, LEGAL_STORE, doc_type="legal")
-        st.sidebar.success("✅ Đã ingest legal docs")
+# if st.sidebar.button("📚 Ingest kho luật / quy định"):
+#     if not os.path.exists(LEGAL_DOCS_DIR):
+#         st.sidebar.error("❌ Chưa có folder legal_docs/")
+#     else:
+#         with st.spinner("Đang ingest kho luật..."):
+#             ingest_folder(LEGAL_DOCS_DIR, LEGAL_STORE, doc_type="legal")
+#         st.sidebar.success("✅ Đã ingest legal docs")
 
 if st.sidebar.button("🗑️ Xóa toàn bộ vector store"):
     if os.path.exists("data/vector_store"):
@@ -144,7 +144,7 @@ if uploaded_file is not None:
             with st.spinner(f"Đang xử lý **{file_name}**..."):
                 ingest_document(file_path, USER_STORE, doc_type="user")
             st.session_state.ingested_files.add(file_name)
-            st.success(f"✅ Đã ingest: {file_name}")
+            st.success(f"✅ Đã xử lý: {file_name}")
         except Exception as e:
             st.error(f"❌ Lỗi khi xử lý file: {e}")
         finally:
@@ -163,7 +163,7 @@ if st.session_state.ingested_files:
 st.subheader("2) Hỏi đáp")
 query = st.text_input(
     "Nhập câu hỏi",
-    placeholder="Ví dụ: Điều 3 là gì? / Lãi suất có hợp pháp không? / Tóm tắt nghĩa vụ bên B",
+    placeholder="Ví dụ: Điều 1 là gì? / Lãi suất có hợp pháp không? / Tóm tắt nghĩa vụ bên B",
 )
 
 if st.button("🔍 Tra cứu") and query:

@@ -6,7 +6,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 # ARTICLE_PATTERN chỉ match khi "Điều X" đứng đầu dòng VÀ
 # KHÔNG theo sau bởi từ nối (của, trong, theo, này, và, hoặc...)
 ARTICLE_PATTERN = re.compile(
-    r"(?m)^(Điều\s+\d+[A-Za-z]?[\.\s][^\n]*)",
+    r"(?m)^[\s]*(Điều\s+\d+[A-Za-z]?[\.\s:])",
     re.IGNORECASE | re.MULTILINE
 )
 
@@ -30,10 +30,74 @@ HEADER_KEYWORDS = [
     "phạm vi điều chỉnh", "đối tượng áp dụng", "quy định chung",
 ]
 
+def detect_contract_type(filename: str) -> str:
+    """
+    Nhận diện loại hợp đồng dựa trên tên file.
+    Giúp hệ thống xử lý thông minh hơn với nhiều loại hợp đồng khác nhau.
+    """
+    if not filename:
+        return "hop_dong_khac"
+    
+    name = filename.lower().replace("_", " ").replace("-", " ")
+    
+    # Giấy mượn tiền / vay nợ
+    if any(keyword in name for keyword in [
+        "muon tien", "giay muon", "vay tien", "lãi suất", "tra no", "cho muon"
+    ]):
+        return "giay_muon_tien"
+    
+    # Hợp đồng thuê đất
+    if any(keyword in name for keyword in [
+        "thue dat", "hop dong thue", "cho thue dat", "thue dat"
+    ]):
+        return "hop_dong_thue_dat"
+    
+    # Hợp đồng mua bán
+    if any(keyword in name for keyword in [
+        "mua ban", "chuyen nhuong", "ban dat", "hop dong mua", "chuyen nhuong"
+    ]):
+        return "hop_dong_mua_ban"
+    
+    # Hợp đồng lao động
+    if any(keyword in name for keyword in [
+        "lao dong", "hop dong lao", "nhan cong", "tuyen dung"
+    ]):
+        return "hop_dong_lao_dong"
+    
+    # Có thể thêm nhiều loại khác sau này
+    return "hop_dong_khac"
+
+def _fix_paragraph_breaks(text: str) -> str:
+    """Cải tiến nối nội dung giữa trang và format"""
+    # Nối điều khoản bị cắt trang
+    text = re.sub(r"(?<=[^\n])(\s)(Điều\s+\d+[A-Za-z]?[\.\s:])", r"\n\2", text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<=[^\n])\s+(Điều\s+\d+[A-Za-z]?[\.\s:])", r"\n\1", text, flags=re.IGNORECASE)
+    
+    # Nối dấu gạch đầu dòng bị xuống dòng
+    text = re.sub(r"([^\.\:\;\?\!\n])\n\s*([\-•–])\s*", r"\1 \2 ", text)
+    
+    # Thêm newline trước số khoản và chữ cái
+    text = re.sub(r"(?<=[^\n])\s+(\d+\.\s)", r"\n\1", text)
+    text = re.sub(r"(?<=[^\n])\s+([a-zđ]\)\s)", r"\n\1", text)
+    
+    return text
 
 def _clean_text(text: str) -> str:
     text = text.replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
+    text = _fix_paragraph_breaks(text)
+
+    # Nối nội dung điều khoản bị cắt giữa trang
+    text = re.sub(
+        r"([^\.\:\;\?\!\n])\n\s*([\-•–])\s*", 
+        r"\1 \2 ", text, flags=re.IGNORECASE
+    )
+
+    # Nối nếu trang sau bắt đầu bằng dấu gạch đầu dòng mà không có "Điều X"
+    text = re.sub(
+        r"(Điều\s+\d+[^\n]+)\n\s*(?=\-|\d+\.)", 
+        r"\1\n", text, flags=re.IGNORECASE
+    )
 
     # Trường hợp: dòng trước chưa kết thúc (không có dấu . : ; ?)
     # và dòng tiếp theo bắt đầu bằng "Điều X của/trong/theo/này..."
@@ -59,7 +123,6 @@ def _clean_text(text: str) -> str:
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
-
 def _is_header_block(text: str) -> bool:
     """Nhận diện phần đầu hợp đồng/văn bản pháp lý."""
     if len(text) < 30:
@@ -67,7 +130,6 @@ def _is_header_block(text: str) -> bool:
     low = text.lower()
     hits = sum(1 for kw in HEADER_KEYWORDS if kw in low)
     return hits >= 1  # Giảm xuống 1 để bắt được nhiều trường hợp hơn
-
 
 def _normalize_article_key(raw: str) -> str:
     """
@@ -79,7 +141,6 @@ def _normalize_article_key(raw: str) -> str:
         # Chuẩn hóa khoảng trắng, lowercase
         return re.sub(r"\s+", " ", m.group(1).strip()).lower()
     return raw.strip().lower()
-
 
 def _extract_title(chunk: str) -> tuple[str | None, str | None]:
     """Trích xuất article key và title từ chunk text."""
@@ -98,7 +159,6 @@ def _extract_title(chunk: str) -> tuple[str | None, str | None]:
         return None, m.group(0).strip()
 
     return None, None
-
 
 def _is_real_article_match(match, text: str) -> bool:
     """
@@ -130,7 +190,6 @@ def _is_real_article_match(match, text: str) -> bool:
 
     return True
 
-
 def _split_long_article(chunk: str, article: str | None, title: str | None) -> list[dict]:
     """Chia điều khoản dài thành các clause nhỏ hơn."""
     sub_pattern = re.compile(
@@ -156,7 +215,7 @@ def _split_long_article(chunk: str, article: str | None, title: str | None) -> l
 
     return sub_chunks or [{"text": chunk, "chunk_type": "article", "article": article, "title": title}]
 
-
+# Hàm chính tách văn bản pháp lý thành các chunk có cấu trúc
 def split_legal_text(text: str) -> list[dict]:
     """
     Tách văn bản pháp lý thành các chunk có cấu trúc.
@@ -272,13 +331,13 @@ def split_legal_text(text: str) -> list[dict]:
 
     return chunks
 
-
+# Hàm tiện ích để build Document list từ text đã tách chunk
 def build_documents_from_pages(docs, doc_type: str = "user") -> list[Document]:
-    """Xây dựng danh sách Document từ các trang PDF đã load."""
+    """Xây dựng danh sách Document từ các trang PDF"""
     if not docs:
         return []
 
-    # Join text nhưng đánh dấu ranh giới trang để track metadata
+    # Join text từ tất cả các trang
     page_boundaries = []  # (char_start, page_label)
     parts = []
     pos = 0
@@ -288,20 +347,33 @@ def build_documents_from_pages(docs, doc_type: str = "user") -> list[Document]:
             continue
         page_boundaries.append((pos, doc.metadata.get("page_label", "?")))
         parts.append(content)
-        pos += len(content) + 2  # +2 cho "\n\n"
+        pos += len(content) + 2
 
     full_text = "\n\n".join(parts)
-    base_meta = docs[0].metadata.copy()
-    base_meta["file_name"] = os.path.basename(base_meta.get("source", "unknown.pdf"))
 
+    # METADATA chung cho tất cả chunk, lấy từ trang đầu tiên (thường chứa header/căn cứ)
+    base_meta = docs[0].metadata.copy()
+    file_name = os.path.basename(base_meta.get("source", "unknown.pdf"))
+    
+    base_meta.update({
+        "file_name": file_name,
+        "document_title": file_name.replace(".pdf", "").replace("_", " "),
+        "contract_type": detect_contract_type(file_name),
+        "doc_type": doc_type,
+    })
+
+    # Tách chunk
     chunks = split_legal_text(full_text)
 
+    # Hàm lấy số trang (nested function - closure)
     def _get_page_label(chunk_text: str) -> str:
-        """Tìm trang chứa đoạn text này dựa trên vị trí trong full_text."""
-        pos = full_text.find(chunk_text[:80])
+        """Tìm trang chứa đoạn text này"""
+        if not chunk_text:
+            return "?"
+        pos = full_text.find(chunk_text[:100])   # tăng lên 100 cho chắc ăn
         if pos == -1:
             return "?"
-        # Tìm trang gần nhất trước vị trí này
+        
         label = "1"
         for boundary_pos, page_label in page_boundaries:
             if boundary_pos <= pos:
@@ -312,15 +384,15 @@ def build_documents_from_pages(docs, doc_type: str = "user") -> list[Document]:
 
     final_docs = []
     for i, chunk in enumerate(chunks):
-        page_label = _get_page_label(chunk["text"])
+        page_label = _get_page_label(chunk["text"])        # <-- Chỉ truyền 1 tham số
+        
         meta = {
             **base_meta,
-            "doc_type": doc_type,
             "chunk_index": i,
             "chunk_type": chunk["chunk_type"],
             "article": chunk["article"],
             "title": chunk["title"],
-            "page_label": page_label,  # ghi đè page_label đúng
+            "page_label": page_label,
         }
         final_docs.append(Document(page_content=chunk["text"], metadata=meta))
 
