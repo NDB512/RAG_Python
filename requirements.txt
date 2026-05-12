@@ -1,24 +1,25 @@
-streamlit==1.56.0
+# UI
+streamlit==1.45.0
 
-# LangChain stack
-langchain==1.2.15
-langchain-core==1.2.30
-langchain-community==0.4.1
-langchain-text-splitters==1.1.1
+# LangChain
+langchain-core==0.3.28
+langchain-community==0.3.14
+langchain-text-splitters==0.3.4
 
-# Embedding / Vector DB
-faiss-cpu==1.13.2
-sentence-transformers==5.4.1
+# Vector DB
+faiss-cpu==1.9.0
 
-# ML / Transformers
-transformers==5.5.4
-torch==2.11.0
+# Embeddings
+sentence-transformers==3.3.1
+transformers==4.47.0
+torch==2.5.1
+torchvision==0.20.1
 
 # PDF
-pdfplumber
+pdfplumber==0.11.4
 
-# Env config
-python-dotenv==1.2.2
+# Env
+python-dotenv==1.0.1
 
 # LLM
-groq==0.1.0
+groq==1.12.0
